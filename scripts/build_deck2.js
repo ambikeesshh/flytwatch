@@ -53,8 +53,8 @@ const stat = (y, big, cap) => {
   s.addText(big, { x: 8.85, y, w: 3.8, h: 0.75, fontFace: HEAD, fontSize: 32, bold: true, color: "FFFFFF" });
   s.addText(cap, { x: 8.85, y: y + 0.72, w: 3.8, h: 0.55, fontFace: BODY, fontSize: 11, color: "9FC3C9", lineSpacing: 13 });
 };
-stat(1.15, "44.1 / 100", "practice benchmark — from a 35.6 zero-shot floor, in two scored iterations");
-stat(2.55, "21 / 35", "Difficulty 2 (timing) — all six events localised, IoU 0.58–0.86");
+stat(1.15, "53.5 / 100", "final evaluation — 1st place at submission, +4.0 reasoning bonus (field best)");
+stat(2.55, "6 → 49.5", "marks climbed across five scored runs: measure, retune, resubmit");
 stat(3.95, "~60 ms", "stage-1 latency per frame on CPU — no GPU needed");
 stat(5.15, "7×", "faster than real-time end-to-end; stage 2 fires on <5% of frames");
 

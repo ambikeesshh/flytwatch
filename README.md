@@ -37,7 +37,7 @@ src/          core package
   pipeline.py         cascade orchestrator + CLI
   submission.py       predictions JSON → platform submission format
   eval/evaluate.py    Level 1/2/3 scoring vs ground truth
-  demo/               Streamlit dashboard
+  demo/               Flask dashboard (live alerts + event log)
 scripts/       run + scoring + deck tooling
   run_v2_local.py     CPU end-to-end run of the probe cascade (v2)
   predict_score.py    platform score predictor (reverse-engineered rubric)
@@ -82,19 +82,18 @@ Score a predictions file against the platform rubric:
 python scripts/predict_score.py runs/predictions.json
 ```
 
-Build the submission deck (2 slides, needs `npm install` once):
+Build the submission deck (7 slides, needs `npm install` once):
 
 ```bash
-node scripts/build_deck2.js
+node scripts/build_deck_final.js
 ```
 
 ## Submission
 
 `submission/` contains the final deliverables:
 
-- `FlytWatch_Final_2slides.pptx` / `.pdf` — the 2-slide judging deck
-  (problem, cascade architecture, results, live-demo pointers).
-- `FlytWatch_Presentation.pptx` / `.pdf` — the full 10-slide walkthrough.
+- `FlytWatch_Final.pptx` / `.pdf` — the judging deck: architecture flow,
+  temporal-logic schematic, example detections, results charts, learnings.
 
 ## Metrics
 
