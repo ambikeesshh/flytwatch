@@ -1,0 +1,8 @@
+.venv/
+data/
+runs/
+*.zip
+__pycache__/
+*.pyc
+.env
+nohup.out
