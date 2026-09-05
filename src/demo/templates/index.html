@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FlytWatch — Live Video Anomaly Detection</title>
+<style>
+  :root { --bg:#0b0f14; --panel:#121820; --line:#1f2a36; --text:#dce6f0; --dim:#7d8fa3;
+          --accent:#00c2a8; --warn:#ffb020; --danger:#ff5470; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text); font:14px/1.5 system-ui, sans-serif; display:flex; height:100vh; }
+  aside { width:280px; background:var(--panel); border-right:1px solid var(--line); overflow-y:auto; }
+  aside h1 { font-size:15px; padding:14px 16px; border-bottom:1px solid var(--line); color:var(--accent); }
+  aside .sub { padding:6px 16px 10px; color:var(--dim); font-size:12px; border-bottom:1px solid var(--line); }
+  .vid { padding:8px 16px; border-bottom:1px solid var(--line); cursor:pointer; display:flex; justify-content:space-between; }
+  .vid:hover { background:#0e141c; }
+  .vid.active { background:#0a2a26; border-left:3px solid var(--accent); }
+  .vid .lvl { color:var(--dim); font-size:11px; }
+  .vid .nev { color:var(--warn); font-size:11px; }
+  main { flex:1; display:flex; flex-direction:column; }
+  .stage { flex:1; display:flex; align-items:center; justify-content:center; background:#000; position:relative; }
+  video { max-width:100%; max-height:100%; }
+  .alert { position:absolute; top:16px; left:16px; right:16px; pointer-events:none; display:flex; flex-direction:column; gap:8px; }
+  .alert .card { background:rgba(255,84,112,.14); border:1px solid var(--danger); border-left:4px solid var(--danger);
+                 padding:8px 12px; border-radius:6px; animation:pop .18s ease-out; }
+  .alert .card .cls { font-weight:700; color:var(--danger); text-transform:capitalize; }
+  .alert .card .desc { font-size:12px; color:var(--text); }
+  @keyframes pop { from { transform:translateY(-6px); opacity:0; } to { transform:none; opacity:1; } }
+  .ticker { height:120px; background:var(--panel); border-top:1px solid var(--line); padding:10px 16px; }
+  .ticker h3 { font-size:11px; color:var(--dim); text-transform:uppercase; letter-spacing:.08em; margin-bottom:6px; }
+  .log { font:12px ui-monospace, monospace; overflow-y:auto; height:70px; color:var(--dim); }
+  .log .hit { color:var(--warn); }
+  .stats { position:absolute; bottom:12px; right:16px; text-align:right; color:var(--dim); font-size:11px; }
+  .stats b { color:var(--accent); }
+</style>
+</head>
+<body>
+<aside>
+  <h1>FlytWatch</h1>
+  <div class="sub">cascade: CLIP probe (always-on) &rarr; Qwen2.5-VL-3B verifier</div>
+  {% for v in videos %}
+  <div class="vid" data-id="{{ v.id }}" onclick="play('{{ v.id }}')">
+    <span>{{ v.id }} <span class="lvl">L{{ v.level }}</span></span>
+    <span class="nev">{% if v.n_events %}{{ v.n_events }} event{{ 's' if v.n_events > 1 }}{% else %}normal{% endif %}</span>
+  </div>
+  {% endfor %}
+</aside>
+<main>
+  <div class="stage">
+    <video id="player" controls></video>
+    <div class="alert" id="alertbox"></div>
+    <div class="stats" id="stats"></div>
+  </div>
+  <div class="ticker">
+    <h3>Live event log</h3>
+    <div class="log" id="log">select a video to begin —</div>
+  </div>
+</main>
+<script>
+let events = [], shown = new Set();
+async function play(id) {
+  document.querySelectorAll('.vid').forEach(el => el.classList.toggle('active', el.dataset.id === id));
+  const player = document.getElementById('player');
+  player.src = '/video/' + id;
+  player.play();
+  events = await (await fetch('/api/events/' + id)).json();
+  shown = new Set();
+  document.getElementById('alertbox').innerHTML = '';
+  document.getElementById('log').innerHTML = '';
+  logLine(`▶ ${id} — streaming, cascade armed`, false);
+  player.ontimeupdate = check;
+}
+function check() {
+  const t = document.getElementById('player').currentTime;
+  const box = document.getElementById('alertbox');
+  events.forEach((ev, i) => {
+    const s = ev.start_time_sec ?? 0, e = ev.end_time_sec ?? s + 2;
+    if (!shown.has(i) && t >= s && t <= e + 1) {
+      shown.add(i);
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML = `<div class="cls">⚠ ${ev.class_name.replaceAll('_',' ')} @ ${s.toFixed(0)}s</div>
+                        <div class="desc">${ev.explanation || ''}</div>`;
+      box.appendChild(card);
+      logLine(`⚠ ${ev.class_name} @ ${s.toFixed(0)}s–${e.toFixed(0)}s`, true);
+      setTimeout(() => card.remove(), 6000);
+    }
+  });
+}
+function logLine(msg, hit) {
+  const log = document.getElementById('log');
+  const d = document.createElement('div');
+  d.textContent = msg;
+  if (hit) d.className = 'hit';
+  log.prepend(d);
+}
+</script>
+</body>
+</html>
