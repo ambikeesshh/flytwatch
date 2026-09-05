@@ -29,7 +29,8 @@ ANOMALY_CLASSES = [
 
 
 def load_manifest(path: Path | None = None) -> dict[str, dict]:
-    path = path or DATA_DIR / "benchmark_manifest.json"
+    import os
+    path = path or Path(os.environ.get("AHC_MANIFEST", "")) if os.environ.get("AHC_MANIFEST") else (path or DATA_DIR / "benchmark_manifest.json")
     man = json.loads(Path(path).read_text())
     return {v["video_id"]: v for v in man["videos"]}
 

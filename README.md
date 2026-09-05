@@ -1,65 +1,104 @@
-# AHC Visual Intelligence Hackathon — Real-Time Video Anomaly Detection
+# FlytWatch — Real-Time Video Anomaly Detection
 
-Two-stage cascade for detecting contextual anomalies in drone/CCTV/dashcam
-video in real time, built around a small vision-language model as the runtime
-detector. Large hosted models are used only during development (comparison,
-distillation, data generation) — never in the runtime path.
+FlytWatch is a two-stage cascade for detecting contextual anomalies in
+drone / CCTV / dashcam video in near real time on modest hardware:
 
-## Architecture
+- **Stage 1 — CLIP ViT-B/32 trained probe.** A linear probe on frozen CLIP
+  image embeddings replaces the zero-shot prompt head. It scores every
+  sampled frame at **~60 ms/frame on CPU** with **72.3% cross-validation
+  accuracy** (trained on the D1/D2 training split), giving a cheap,
+  high-recall anomaly trigger.
+- **Stage 2 — Qwen2.5-VL-3B LoRA verifier.** A LoRA fine-tuned 3B
+  vision-language model runs only on triggered windows, reasoning over a
+  6-frame clip to emit a structured JSON verdict (class, confidence,
+  time span) and filter false alarms.
+
+A temporal event state machine on top handles confirm/clear/cooldown, so
+accidents fire instantly, congestion builds gradually, and a parked car is
+normal in a bay but anomalous on a road shoulder.
 
 ```
-video feed ──▶ sampler (2 fps)
-                 │
-                 ▼
-        ┌──────────────────┐   every sample, ~5ms GPU / ~60ms CPU
-        │ Stage 1: CLIP    │   prompt-ensemble scoring, EMA smoothing
-        │ ViT-B/32 scorer  │   high recall, cheap
-        └────────┬─────────┘
-                 │ trigger (score ≥ τ for N consecutive samples)
-                 ▼
-        ┌──────────────────┐   triggered only, ~0.5-1.5s on T4
-        │ Stage 2: Qwen2.5 │   6-frame window → structured JSON verdict
-        │ VL-3B verifier   │   contextual reasoning, false-alarm filter
-        └────────┬─────────┘
-                 │ confirmed (confidence ≥ τ₂)
-                 ▼
-        ┌──────────────────┐
-        │ Temporal event   │   per-class debounce, cooldown, dedup
-        │ state machine    │   → alerts + event intervals
-        └──────────────────┘
+video ─▶ sampler (2 fps) ─▶ Stage 1: CLIP probe (always-on, ~60ms CPU)
+                              │ score ≥ τ for N samples
+                              ▼
+                           Stage 2: Qwen2.5-VL-3B LoRA (triggered, T4)
+                              │ confidence ≥ τ₂
+                              ▼
+                           event state machine ─▶ alerts + intervals
 ```
 
-Why a cascade: the problem statement prizes real-time throughput across many
-feeds and low false alarms. Stage 1 runs always-on at a few ms per frame;
-stage 2's expensive reasoning runs only when something is worth verifying
-(typically <5% of samples). The VLM supplies the context judgment the problem
-demands (parked car: normal in a bay, anomalous on a shoulder); the state
-machine supplies the temporal judgment (accidents are instant, congestion
-builds, stalled vehicles become anomalous only after a while).
+## Repository layout
 
-## Layout
+```
+src/          core package
+  stage1_clip.py      CLIP scorer + trained linear probe head
+  stage2_vlm.py       Qwen2.5-VL-3B LoRA verifier (structured JSON out)
+  temporal.py         event state machine (confirm/clear/cooldown)
+  pipeline.py         cascade orchestrator + CLI
+  submission.py       predictions JSON → platform submission format
+  eval/evaluate.py    Level 1/2/3 scoring vs ground truth
+  demo/               Streamlit dashboard
+scripts/       run + scoring + deck tooling
+  run_v2_local.py     CPU end-to-end run of the probe cascade (v2)
+  predict_score.py    platform score predictor (reverse-engineered rubric)
+  build_deck2.js      builds the 2-slide submission deck (pptxgenjs)
+  build_colab_notebook.py / download_dataset.py
+notebooks/     Colab/Kaggle training (stage-1 probe, stage-2 LoRA)
+data/          datasets, manifests (gitignored — not in the repo)
+runs/          predictions, scores, artifacts (gitignored)
+submission/    final deliverables (deck pptx/pdf; jpgs gitignored)
+```
 
-- `src/stage1_clip.py` — always-on CLIP scorer (prompt ensembles, EMA, trigger)
-- `src/stage2_vlm.py` — Qwen2.5-VL-3B verifier, structured JSON output
-- `src/temporal.py` — event state machine (confirm/clear/cooldown)
-- `src/pipeline.py` — cascade orchestrator + CLI, emits predictions JSON
-- `src/eval/evaluate.py` — Levels 1/2/3 scoring against ground truth
-- `src/prompts.py` — all prompts in one place
-- `scripts/download_dataset.py` — multi-mirror resilient Drive downloader
-- `notebooks/` — Colab/Kaggle fine-tuning (stage-1 probe, stage-2 LoRA)
+## Setup
+
+```bash
+uv venv                          # or: python -m venv .venv
+source .venv/bin/activate
+uv pip install -r requirements.txt   # torch, transformers, opencv, pillow
+```
+
+Put dataset videos under `data/test/` and `data/eval/`
+(`scripts/download_dataset.py` fetches from Drive mirrors).
 
 ## Run
 
+End-to-end cascade (stage 2 needs a GPU or will be slow):
+
 ```bash
-.venv/bin/python -m src.pipeline --input data/test/videos --output runs/predictions.json
-.venv/bin/python -m src.eval.evaluate runs/predictions.json
+python -m src.pipeline --input data/test/videos --output runs/predictions.json
+python -m src.eval.evaluate runs/predictions.json
 ```
 
-`--no-stage2` gives a fast stage-1-only baseline.
+Fast CPU path used for the eval round — stage-1 probe only, event state
+machine, and platform-oriented post-processing:
+
+```bash
+python scripts/run_v2_local.py --help
+```
+
+Score a predictions file against the platform rubric:
+
+```bash
+python scripts/predict_score.py runs/predictions.json
+```
+
+Build the submission deck (2 slides, needs `npm install` once):
+
+```bash
+node scripts/build_deck2.js
+```
+
+## Submission
+
+`submission/` contains the final deliverables:
+
+- `FlytWatch_Final_2slides.pptx` / `.pdf` — the 2-slide judging deck
+  (problem, cascade architecture, results, live-demo pointers).
+- `FlytWatch_Presentation.pptx` / `.pdf` — the full 10-slide walkthrough.
 
 ## Metrics
 
-- Level 1: video-level AUC / F1 / accuracy (`is_anomaly`)
-- Level 2: event precision / recall / F1 (tolerant temporal matching), false alarms per hour
-- Level 3: class accuracy on matched events + confusion matrix
-- Runtime: per-stage latency, real-time factor (processing sec / video sec; <1 is real-time)
+- Level 1: video-level AUC / F1 / accuracy
+- Level 2: event precision / recall / F1 (IoU ≥ 0.5 matching), false alarms/hr
+- Level 3: class accuracy on matched events
+- Runtime: per-stage latency and real-time factor (< 1 means real-time)

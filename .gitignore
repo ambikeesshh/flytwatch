@@ -6,3 +6,7 @@ __pycache__/
 *.pyc
 .env
 nohup.out
+*.pkl
+node_modules/
+submission/*.jpg
+submission/f2slide*.jpg
